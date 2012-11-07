@@ -1,0 +1,281 @@
+Compiling functional languages
+Kristopher Micinski
+
+--
+
+Compilers
+
+All about how to take a high level language, and turn it into the low
+level langauge, in a semantics preserving way.
+
+--
+
+Why compile code?
+
+ - My machine does not run code written in scheme, it runs binary code
+ - Running binary code may be faster than code written in scheme
+
+--
+
+Alternatives to compilers:
+
+ - Implement an interpreter.
+ - No need to compile all the way down to binary, compile down to *bytecode*
+ - Compile to another source language (C, JavaScript, etc...)
+
+--
+
+Compilers are like onions:
+
+ - They work in *stages*.
+ - Start with a high level language, iteratively go down to a lower level language.
+ - Each stage is typically called *intermediate* code.
+
+--
+
+What do we care about in compilers?
+
+ - Compilers preserve *semantics*.
+ - As we go down we get:
+   - Less structure
+   - More expressiveness
+ - For example, the set of untyped programs is larger than typed programs.
+
+ - Throwing away types gives us less structure, more expressiveness,
+   but potential badness.
+
+--
+
+Goal: Preserve the semantics.
+
+The name of the game: preserve the semantics of the source langauge as
+we compile down to the lower level language.
+
+--
+
+Think compositionally:
+
+Compilers are a big composition of functions:
+
+compiler = f_n . f_{n-1} . \dots . f_0
+
+f_0 takes the source languge into an intermediate representation.
+ ...
+f_n takes the n-1th intermediate representation into the target language.
+
+--
+
+From a types perspective:
+
+Two potential types of functions:
+    (translations)
+    IR_n -> IR_{n+1}
+    (optimizations)
+    IR_n -> IR_n
+
+--
+
+Examples of source / target languages:
+
+ - C to assembly
+ - Rube to Lua
+ - Java to JVM
+ - JVM to Dalvik
+ - Haskell to STG
+ - Scheme to C
+
+--
+
+Compiling functional languages:
+
+At a high level, compiling functional languages is _no different_ than
+compiling imperative languages, we just need to change the *types* of
+the IR, and change the *interpretation* to match up.
+
+You're probably used to thinking of an imperative (register based)
+machine, so compiling imperative languages is straightforward.
+
+To understand functional compilers, you need to understand abstract
+machines which implement *functional* languages.
+
+--
+
+A concrete functional language
+
+It will help if we consider a concrete functional language: Scheme.
+
+Our compiler will take Scheme as its input language, and slowly go
+down to subsets of scheme, which we will eventually end up compiling
+to C.
+
+Note that this is only one of the ways you can compile functional
+languages!  Can compile to the lambda calculus, or any other sequence
+of normal forms.
+
+Each involves understanding the semantics of the source language, the
+semantics of the target language, and transitioning between them!
+
+--
+
+Example scheme programs
+
+--
+
+(define square
+  (lambda (x)
+    (* x x)))
+
+(+ (square 5) 1)
+
+--
+
+(define make-adder
+  (lambda (n)
+    (lambda (x) (+ x n))))
+
+((make-adder 1) 2)
+
+--
+How to compile functional languages?
+
+Whenever we want to compile a language, we take our source language,
+and our target language, and we ask:
+
+    What does the source language have, that the target language lacks?
+
+^^ This is the interesting part of compilation!
+
+--
+
+What do FPs have that C does not?
+
+ - First class functions (HOFs)
+ - Closures
+ - GC
+
+Need to write our compiler to transform scheme to this form.
+
+--
+CPS:
+
+Compile into *continuation passing style*:
+ - Every function takes a list of parameters, along with a *continuation*.
+ - The continuation says "what to do next."
+ 
+"No procedure is allowed to return to its caller---ever."
+    -- Matt Might
+
+Prove:
+
+  Any program in a functional programming language can be transformed
+  into CPS.
+
+--
+Why CPS?
+
+ - If no function ever returns to its caller, why do we need to keep
+   the stack frame around?
+
+ - We don't!
+
+ - This is the main idea behind CPS: if we don't have to return to the
+   function, then we don't need to keep around stack frames.
+
+--
+
+Thought: 
+
+  Compile the program to CPS, as its easier to execute a CPS program.
+
+--
+
+Example:
+
+(define square
+  (lambda (x)
+    (* x x)))
+
+--
+
+(define square
+  (lambda (x k)
+    (*^{k'} x x k)))
+
+Note: the 'k' superscript means a "lifted" form of the primitive
+operations.  For example, (*^{k} x x k) means: multiply x and x, then
+pass the result to k
+
+--
+How to "bootstrap" the program?
+
+If every expression in the program takes an extra parameter, how do we
+compile the toplevel expression?
+
+(define square
+  (lambda (x)
+    (* x x)))
+
+(square 5)
+
+Simple trick!
+
+--
+
+(define square
+  (lambda (x k)
+    (*^{k'} x x k)))
+
+(square 5
+  (lambda (x) x))
+
+^^ This gives us a way to "kick off" the computation
+
+--
+More examples:
+
+(define (pyth x y)
+ (sqrt (+ (* x x) (* y y))))
+
+(define (pyth x y k)
+ (*^{k} x x (lambda (x2)
+          (*^{k} y y (lambda (y2)
+                   (+^{k} x2 y2 (lambda (x2py2)
+                              (sqrt^{k} x2py2 k))))))))
+
+--
+
+(define (pyth x y k)
+ (*^{k'} x x (lambda (x2)
+          (*^{k'} y y (lambda (y2)
+                   (+^{k'} x2 y2 (lambda (x2py2)
+                              (sqrt^{k'} x2py2 k))))))))
+
+(pyth 3 4 (id))
+
+Intiution:
+
+  Do all of the computation to compute the pythagorean distance, then
+  simply "dump out" the data.
+
+You can view any repl as doing this
+--
+
+(define make-adder
+  (lambda (n)
+    (lambda (x) (+ x n))))
+
+((make-adder 1) 2)
+
+--
+References:
+
+http://matt.might.net/articles/implementing-a-programming-language/
+
+http://www.iro.umontreal.ca/~boucherd/mslug/meetings/20041020/minutes-en.html
+
+
+
+
+
+
+
